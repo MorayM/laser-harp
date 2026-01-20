@@ -4,8 +4,8 @@ const int DAC_CS = 53; // Chip Select pin for MCP4822
 
 MCP4822 dac(DAC_CS);
 
-int positions[] = {0, 1024, 2048, 3072, 4095};
-const int positionCount = 5;
+int positions[] = {0, 455, 910, 1365, 1820, 2275, 2730, 3185, 3640, 4095};
+const int positionCount = 10;
 
 void setup() {
   // We call the init() method to initialize the instance
@@ -50,9 +50,10 @@ void loop() {
   
   // writeDAC(0, positionX);  // Write to Channel A
   // writeDAC(1, positionY);  // Write to Channel B
+  dac.setVoltageA(2048);
+  dac.updateDAC();
 
   for (int step = 0; step <= positionCount; step++) {
-    dac.setVoltageA(positions[step]);
     dac.setVoltageB(positions[step]);
     dac.updateDAC();
     delay(10);
