@@ -40,7 +40,12 @@ constexpr uint8_t STRING_MODE_COUNT = 2;
 const char *stringModeLabels[STRING_MODE_COUNT] = {"Tom", "Ox7"};
 uint8_t *stringModeNotes[STRING_MODE_COUNT] = {tomStringNotes, ox7StringNotes};
 
-// State
+// Sensor config
+constexpr bool SENSOR_ACTIVE_LOW = false; // HIGH = beam broken (relay closes)
+constexpr unsigned long DEBOUNCE_MS = 5;
+constexpr unsigned long UI_UPDATE_MS = 50; // 20 Hz button/LCD poll in play mode
+
+// State — menu
 uint8_t harpMode = HARP_MODE_SETUP;
 uint8_t menuIndex = 0;
 uint8_t stringMode = 0;
@@ -49,6 +54,13 @@ uint8_t midiChannel = 0;
 uint8_t midiVelocity = 100;
 uint8_t lastButtons = 0;
 bool lcdDirty = true;
+
+// State — play mode
+uint16_t sensorState = 0;                  // debounced state (bit=1 = beam broken)
+uint16_t prevSensorState = 0;              // previous debounced state for edge detect
+uint16_t lastRawState = 0;                 // raw reading from previous scan
+unsigned long debounceStart[SENSOR_COUNT]; // per-channel debounce timers
+unsigned long lastUiUpdate = 0;
 
 // -------------------------
 // MIDI helpers
@@ -73,6 +85,35 @@ void midiNoteOff(uint8_t ch, uint8_t note)
   midiWriteByte(0x80 | (ch & 0x0F));
   midiWriteByte(note & 0x7F);
   midiWriteByte(0);
+}
+
+// -------------------------
+// Sensor helpers
+// -------------------------
+
+// Read all sensor pins into a bitmask (bit=1 = beam broken)
+uint16_t scanSensors()
+{
+  uint16_t bits = 0;
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++)
+  {
+    bool level = digitalRead(SENSOR_PINS[i]);
+    if (SENSOR_ACTIVE_LOW)
+      level = !level;
+    if (level)
+      bits |= (1 << i);
+  }
+  return bits;
+}
+
+// Send CC 123 (All Notes Off) then zero state
+void allNotesOff()
+{
+  midiWriteByte(0xB0 | (midiChannel & 0x0F)); // Control Change
+  midiWriteByte(123);                         // All Notes Off
+  midiWriteByte(0);
+  sensorState = 0;
+  prevSensorState = 0;
 }
 
 // -------------------------
@@ -195,6 +236,16 @@ void setupModeLoop()
   }
   if (pressed & BUTTON_SELECT)
   {
+    // Snapshot current sensors to avoid spurious edges on entry
+    uint16_t snap = scanSensors();
+    sensorState = snap;
+    prevSensorState = snap;
+    lastRawState = snap;
+    unsigned long now = millis();
+    for (uint8_t i = 0; i < SENSOR_COUNT; i++)
+      debounceStart[i] = now;
+    lastUiUpdate = now;
+
     harpMode = HARP_MODE_PLAY;
     lcdDirty = true;
     lcd.setBacklight(LCD_BACKLIGHT_RED);
@@ -212,18 +263,66 @@ void setupModeLoop()
 
 void playModeLoop()
 {
-  // TODO: sensor scanning, debounce, edge detection, MIDI note emission
+  unsigned long now = millis();
 
-  uint8_t buttons = lcd.readButtons();
-  uint8_t pressed = buttons & ~lastButtons;
-  lastButtons = buttons;
+  // 1. Scan sensors
+  uint16_t raw = scanSensors();
 
-  if (pressed & BUTTON_SELECT)
+  // 2. Per-channel debounce
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++)
   {
-    harpMode = HARP_MODE_SETUP;
-    lcdDirty = true;
-    lcd.setBacklight(LCD_BACKLIGHT_GREEN);
-    Serial.println("Entering setup mode");
+    bool rawBit = (raw >> i) & 1;
+    bool lastRawBit = (lastRawState >> i) & 1;
+    bool stableBit = (sensorState >> i) & 1;
+
+    // Raw changed — reset debounce timer
+    if (rawBit != lastRawBit)
+      debounceStart[i] = now;
+
+    // Raw differs from accepted and has been stable long enough — accept
+    if (rawBit != stableBit && (now - debounceStart[i] >= DEBOUNCE_MS))
+    {
+      if (rawBit)
+        sensorState |= (1 << i);
+      else
+        sensorState &= ~(1 << i);
+    }
+  }
+  lastRawState = raw;
+
+  // 3. Edge detection
+  uint16_t edges = sensorState ^ prevSensorState;
+
+  // 4. MIDI emission
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++)
+  {
+    if (!(edges & (1 << i)))
+      continue;
+    if (sensorState & (1 << i))
+      midiNoteOn(midiChannel, stringNotes[i], midiVelocity);
+    else
+      midiNoteOff(midiChannel, stringNotes[i]);
+  }
+
+  // 5. Commit state
+  prevSensorState = sensorState;
+
+  // 6. Throttled UI — check SELECT to exit
+  if (now - lastUiUpdate >= UI_UPDATE_MS)
+  {
+    lastUiUpdate = now;
+    uint8_t buttons = lcd.readButtons();
+    uint8_t pressed = buttons & ~lastButtons;
+    lastButtons = buttons;
+
+    if (pressed & BUTTON_SELECT)
+    {
+      allNotesOff();
+      harpMode = HARP_MODE_SETUP;
+      lcdDirty = true;
+      lcd.setBacklight(LCD_BACKLIGHT_GREEN);
+      Serial.println("Entering setup mode");
+    }
   }
 }
 
