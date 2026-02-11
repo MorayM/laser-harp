@@ -30,6 +30,7 @@ The design prioritises:
 * Output drives **reed relays**, producing a clean digital on/off signal per string.
 * Logic represents **beam intact vs beam interrupted** (polarity configurable in software).
 * Sensors are read as **digital inputs**, one per string.
+* Inputs are in PULLUP mode so are off when the pin is grounded and high when the switch is broken
 
 > Note: Although the original circuit was derived from *The Art of Electronics*, the firmware assumes only a clean digital signal and does not depend on the analog implementation details.
 

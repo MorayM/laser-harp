@@ -154,12 +154,19 @@ void drawMenu()
   }
 }
 
+// Draw string state on LCD line 0: | = unbroken, - = broken
+void drawStringState()
+{
+  lcd.setCursor(0, 0);
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++)
+    lcd.print((sensorState & (1 << i)) ? '-' : '|');
+}
+
 // Draw the play mode status screen
 void drawPlayScreen()
 {
   lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Playing...");
+  drawStringState();
   lcd.setCursor(0, 1);
   lcd.print("Ch:");
   if (midiChannel + 1 < 10)
@@ -311,6 +318,7 @@ void playModeLoop()
   if (now - lastUiUpdate >= UI_UPDATE_MS)
   {
     lastUiUpdate = now;
+    drawStringState();
     uint8_t buttons = lcd.readButtons();
     uint8_t pressed = buttons & ~lastButtons;
     lastButtons = buttons;
