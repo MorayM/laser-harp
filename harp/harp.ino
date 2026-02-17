@@ -37,11 +37,11 @@ const char *menuLabels[MENU_COUNT] = {
     ">> Play"};
 
 constexpr uint8_t STRING_MODE_COUNT = 2;
-const char *stringModeLabels[STRING_MODE_COUNT] = {"Tom", "Ox7"};
+const char *stringModeLabels[STRING_MODE_COUNT] = {"Old Me", "Ox7"};
 uint8_t *stringModeNotes[STRING_MODE_COUNT] = {tomStringNotes, ox7StringNotes};
 
 // Sensor config
-constexpr bool SENSOR_ACTIVE_LOW = false; // HIGH = beam broken (relay closes)
+constexpr bool SENSOR_ACTIVE_LOW = true; // LOW = beam broken (relay closes and pulls to GND)
 constexpr unsigned long DEBOUNCE_MS = 5;
 constexpr unsigned long UI_UPDATE_MS = 50; // 20 Hz button/LCD poll in play mode
 
