@@ -16,7 +16,7 @@ constexpr uint8_t HARP_MODE_SETUP = 0;
 constexpr uint8_t HARP_MODE_PLAY = 1;
 
 constexpr uint8_t SENSOR_COUNT = 10;
-constexpr uint8_t SENSOR_PINS[SENSOR_COUNT] = {22, 23, 24, 25, 26, 27, 28, 29, 30, 31};
+constexpr uint8_t SENSOR_PINS[SENSOR_COUNT] = {22, 24, 26, 28, 30, 32, 34, 36, 38, 40};
 // Notes per string (MIDI note numbers). Adjust to taste.
 //                                      A3  Bb3 B3  C4  D4  E4  F4  F#4 G4  A4
 uint8_t tomStringNotes[SENSOR_COUNT] = {57, 58, 59, 60, 62, 64, 65, 66, 67, 69};
@@ -42,7 +42,7 @@ uint8_t *stringModeNotes[STRING_MODE_COUNT] = {tomStringNotes, ox7StringNotes};
 
 // Sensor config
 constexpr bool SENSOR_ACTIVE_LOW = true; // LOW = beam broken (relay closes and pulls to GND)
-constexpr unsigned long DEBOUNCE_MS = 5;
+constexpr unsigned long DEBOUNCE_MS = 1;
 constexpr unsigned long UI_UPDATE_MS = 50; // 20 Hz button/LCD poll in play mode
 
 // State — menu
@@ -61,6 +61,7 @@ uint16_t prevSensorState = 0;              // previous debounced state for edge 
 uint16_t lastRawState = 0;                 // raw reading from previous scan
 unsigned long debounceStart[SENSOR_COUNT]; // per-channel debounce timers
 unsigned long lastUiUpdate = 0;
+uint16_t lastDrawnState = 0; // only redraw LCD when sensorState != this
 
 // -------------------------
 // MIDI helpers
@@ -257,6 +258,7 @@ void setupModeLoop()
     lcdDirty = true;
     lcd.setBacklight(LCD_BACKLIGHT_RED);
     drawPlayScreen();
+    lastDrawnState = snap;
     Serial.println("Entering play mode");
     return;
   }
@@ -318,7 +320,11 @@ void playModeLoop()
   if (now - lastUiUpdate >= UI_UPDATE_MS)
   {
     lastUiUpdate = now;
-    drawStringState();
+    if (sensorState != lastDrawnState)
+    {
+      drawStringState();
+      lastDrawnState = sensorState;
+    }
     uint8_t buttons = lcd.readButtons();
     uint8_t pressed = buttons & ~lastButtons;
     lastButtons = buttons;
@@ -352,6 +358,7 @@ void setup()
   }
 
   lcd.begin(16, 2);
+  Wire.setClock(400000); // 400 kHz Fast Mode for lower UI block time
   lcd.setBacklight(LCD_BACKLIGHT_GREEN);
   drawMenu();
   lcdDirty = false;
